@@ -1,0 +1,16 @@
+# Secrets - never upload these
+aura_credentials.txt
+aura_keys.txt
+llm_keys.txt
+.streamlit/secrets.toml
+*.env
+.env
+logins.txt
+
+# Downloaded tools and Python cache
+tools/
+__pycache__/
+*.pyc
+
+# Local temp files
+*.log

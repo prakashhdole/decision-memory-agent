@@ -1,0 +1,36 @@
+{
+  // One-click commands: Ctrl+Shift+P -> "Tasks: Run Task" -> pick one
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Find fraud rings",
+      "type": "shell",
+      "command": "python find_cycles.py",
+      "problemMatcher": []
+    },
+    {
+      "label": "Reset fraud sample data",
+      "type": "shell",
+      "command": "python seed/00_fraud_accounts.py --reset",
+      "problemMatcher": []
+    },
+    {
+      "label": "Open Neo4j shell (cypher-shell)",
+      "type": "shell",
+      "command": ".\\cypher.cmd",
+      "problemMatcher": []
+    },
+    {
+      "label": "Update Aura agent",
+      "type": "shell",
+      "command": "python create_agent.py",
+      "problemMatcher": []
+    },
+    {
+      "label": "Chat with Kiro CLI",
+      "type": "shell",
+      "command": "kiro-cli chat",
+      "problemMatcher": []
+    }
+  ]
+}

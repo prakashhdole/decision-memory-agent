@@ -1,0 +1,13 @@
+{
+  // Use the Python that has the neo4j library installed
+  "python.defaultInterpreterPath": "${env:LOCALAPPDATA}\\Programs\\Python\\Python312\\python.exe",
+
+  // Make python, java (for cypher-shell) and kiro-cli work in the VS Code terminal
+  "terminal.integrated.env.windows": {
+    "JAVA_HOME": "C:\\Program Files\\Microsoft\\jdk-21.0.12.101-hotspot",
+    "PATH": "${env:LOCALAPPDATA}\\Programs\\Python\\Python312;${env:LOCALAPPDATA}\\Programs\\Python\\Python312\\Scripts;C:\\Program Files\\Microsoft\\jdk-21.0.12.101-hotspot\\bin;${env:LOCALAPPDATA}\\Kiro-Cli;${env:PATH}"
+  },
+
+  // Open .cypher files with the Neo4j extension
+  "files.associations": { "*.cypher": "cypher" }
+}
