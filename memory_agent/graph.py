@@ -12,6 +12,8 @@ Graph model
   (:Preference)-[:SUPERSEDES]->(:Preference)                      preference changed over time
   (every memory)-[:LEARNED_FROM]->(:Interaction)
 """
+import re
+
 from neo4j.time import Date, DateTime
 
 SCHEMA = [
@@ -130,7 +132,33 @@ def store(driver, user_id, message, mem):
                uid=user_id, iid=iid, text=o.get("text", ""), success=success)
         saved.append(("Outcome", o.get("text", "") +
                       (f"  → linked to: {linked[0]['decision']}" if linked else "")))
+
+    for c in mem.get("completions", []):
+        words = [w for w in re.findall(r"[a-z0-9]{3,}", (c.get("task_hint") or c.get("text", "")).lower())
+                 if w not in ("the", "and", "for", "with", "to")]
+        done = _q(driver, base + """
+            MATCH (u)-[:HAS_TASK]->(t:Task) WHERE t.status <> 'done'
+            WITH i, t, size([w IN $words WHERE toLower(t.title) CONTAINS w]) AS score
+            WHERE score > 0
+            WITH i, t ORDER BY score DESC, t.createdAt DESC LIMIT 1
+            SET t.status = 'done', t.doneAt = datetime()
+            MERGE (t)-[:COMPLETED_IN]->(i)
+            RETURN t.title AS title""", uid=user_id, iid=iid, words=words)
+        saved.append(("Completed", f"✔ {done[0]['title']}" if done else
+                      f"(no open task matched “{c.get('text', '')}”)"))
     return saved
+
+
+def track_record(driver, user_id):
+    """Decision stats: total, with outcomes, succeeded, failed; tasks done/open."""
+    rec = _q(driver, """
+        MATCH (u:User {userId: $uid})
+        RETURN COUNT { (u)-[:MADE_DECISION]->(:Decision) } AS decisions,
+               COUNT { (u)-[:MADE_DECISION]->(d:Decision) WHERE d.status = 'succeeded' } AS succeeded,
+               COUNT { (u)-[:MADE_DECISION]->(d:Decision) WHERE d.status = 'failed' } AS failed,
+               COUNT { (u)-[:HAS_TASK]->(t:Task) WHERE t.status = 'done' } AS tasksDone,
+               COUNT { (u)-[:HAS_TASK]->(t:Task) WHERE t.status <> 'done' } AS tasksOpen""", uid=user_id)
+    return rec[0].data() if rec else {"decisions": 0, "succeeded": 0, "failed": 0, "tasksDone": 0, "tasksOpen": 0}
 
 
 # ------------------------------------------------------------------ retrieve

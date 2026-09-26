@@ -18,12 +18,15 @@ from . import llm
 from .dates import find_days, resolve_day, week_table
 
 EMPTY = {"intent": "remember", "preferences": [], "commitments": [], "tasks": [],
-         "decisions": [], "outcomes": []}
+         "decisions": [], "outcomes": [], "completions": []}
 
 SYSTEM = """You extract long-term memories for a personal productivity assistant.
-Return ONLY JSON with keys: intent, preferences, commitments, tasks, decisions, outcomes.
+Return ONLY JSON with keys: intent, preferences, commitments, tasks, decisions, outcomes, completions.
 - intent: "plan" (user wants a schedule/plan), "decide" (wants help choosing / asks "should I"),
+  "revisit" (asks WHY they made a past decision / wants to review a decision),
   "recall" (asks what you remember / what they decided), otherwise "remember".
+- completions: tasks the user says they have finished ("I sent the invoice").
+  {text, task_hint: few words identifying the task}
 - preferences: stable habits/likes. {category: meetings|preparation|focus|work_hours|breaks|other,
   text: short sentence, time_of_day: morning|afternoon|evening|null, prep_days: integer|null}
 - commitments: fixed events with others (meetings, presentations, deadlines, appointments).
@@ -130,6 +133,10 @@ def rule_extract(message, today):
     out = json.loads(json.dumps(EMPTY))
     low = message.lower()
 
+    if re.search(r"\b(why did i|remind me why|what was my reason|review my decision|revisit|"
+                 r"was it (a )?good (decision|idea|call)|was that (a )?good)\b", low):
+        out["intent"] = "revisit"
+        return out
     if re.search(r"\b(plan|schedule|organi[sz]e)\b.*\b(week|day|days|tomorrow|monday|tuesday|wednesday|thursday|friday)\b", low):
         out["intent"] = "plan"
     elif re.search(r"\b(should i|help me (decide|choose)|which (one|option)|is it (a )?good idea|what do you (recommend|suggest))\b", low):
@@ -193,6 +200,13 @@ def rule_extract(message, today):
                 text = "I " + text[0].lower() + text[1:]
             out["preferences"].append({"category": cat, "text": text,
                                        "time_of_day": _tod(l), "prep_days": prep})
+            continue
+
+        # completed tasks: "I sent the invoice to Acme", "Finished the report"
+        cm = re.match(r"^(?:i\s+)?(?:have\s+|'ve\s+|just\s+|already\s+)*(sent|finished|completed|submitted|paid|"
+                      r"booked|emailed|called|did|done with|wrapped up)\s+(.+)$", s, re.I)
+        if cm and out["intent"] == "remember":
+            out["completions"].append({"text": s.rstrip("."), "task_hint": cm.group(2).strip(" .")})
             continue
 
         # tasks

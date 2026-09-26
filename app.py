@@ -23,6 +23,7 @@ from db import get_driver  # noqa: E402
 from memory_agent import graph, llm  # noqa: E402
 from memory_agent.agent import handle  # noqa: E402
 from memory_agent.auth import LoginGuard, check_login  # noqa: E402
+from memory_agent.ics import plan_to_ics  # noqa: E402
 
 
 @st.cache_resource
@@ -55,7 +56,8 @@ EXAMPLE = [
     "I have a team sync on Thursday at 3pm.",
 ]
 QUICK = ["Help me plan my week.", "What do you remember about me?",
-         "Should I take on the extra project this week?", "The client presentation went well."]
+         "Why did I decide to prepare on Monday?", "Should I take on the extra project this week?",
+         "I sent the invoice to Acme.", "The client presentation went badly, I ran out of time."]
 
 
 @st.cache_resource
@@ -109,9 +111,10 @@ if prompt:
 left, right = st.columns([3, 2], gap="large")
 
 
-def render_result(res):
+def render_result(res, idx):
     for label, text in res["saved"]:
-        st.caption(f"💾 Stored in Neo4j → **{label}**: {text}")
+        icon = "✔️ Updated in Neo4j" if label == "Completed" else "💾 Stored in Neo4j"
+        st.caption(f"{icon} → **{label}**: {text}")
     r = res["result"]
     if not r:
         if not res["saved"]:
@@ -133,6 +136,9 @@ def render_result(res):
                             f"↳ {it['why']}</span>", unsafe_allow_html=True)
     for n in r.get("notes", []):
         st.markdown(n)
+    if r.get("days") and any(d["items"] for d in r["days"]):
+        st.download_button("📅 Add this plan to my calendar (.ics)", plan_to_ics(r),
+                           file_name="my-week-plan.ics", mime="text/calendar", key=f"ics-{idx}")
     if r["memories_used"]:
         with st.expander(f"🔎 Memories used ({len(r['memories_used'])})"):
             for m in r["memories_used"]:
@@ -144,12 +150,12 @@ with left:
     if not st.session_state.chat:
         st.info("**Try it:** click **Load example scenario** in the sidebar, then **Help me plan my week**. "
                 "Or type your own preferences, tasks and decisions below.")
-    for m in st.session_state.chat:
+    for i, m in enumerate(st.session_state.chat):
         with st.chat_message(m["role"]):
             if m["role"] == "user":
                 st.markdown(m["content"])
             else:
-                render_result(m["res"])
+                render_result(m["res"], i)
 
 
 def dot(triples):
@@ -175,6 +181,14 @@ def dot(triples):
 with right:
     st.header("What I remember")
     mem = graph.retrieve(driver(), st.session_state.user)
+    tr = graph.track_record(driver(), st.session_state.user)
+    judged = tr["succeeded"] + tr["failed"]
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Memories", sum(len(v) for v in mem.values()))
+    c2.metric("Decisions", tr["decisions"])
+    c3.metric("Worked out", f"{round(100 * tr['succeeded'] / judged)}%" if judged else "–",
+              help="Share of decisions with a recorded outcome that went well")
+    c4.metric("Tasks done", f"{tr['tasksDone']}/{tr['tasksDone'] + tr['tasksOpen']}")
     tab_list, tab_graph = st.tabs(["📋 Memories", "🕸️ Graph"])
     with tab_list:
         sections = [

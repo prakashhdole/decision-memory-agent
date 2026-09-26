@@ -24,7 +24,8 @@ MEETING_KINDS = {"meeting", "client_meeting", "presentation", "interview", "appo
 
 
 def recommend(intent, question, mem, today):
-    draft = {"plan": rule_plan, "decide": rule_decide}.get(intent, rule_recall)(question, mem, today)
+    draft = {"plan": rule_plan, "decide": rule_decide,
+             "revisit": rule_revisit}.get(intent, rule_recall)(question, mem, today)
     draft["source"] = "rules"
     if llm.provider():
         refined = _llm_refine(intent, question, mem, today, draft)
@@ -159,7 +160,23 @@ def rule_plan(question, mem, today):
                               "why": "Task" + (f" due {due:%A}" if due else " with no deadline, put on your lightest day")})
         use("Task", t["title"])
 
-    # 5) lessons from past outcomes
+    # 5) learn from failures: add a rehearsal/buffer slot before important events
+    failures = [o for o in mem["outcomes"] if o.get("success") is False]
+    if failures:
+        for c in mem["commitments"]:
+            cd = _d(c.get("date"))
+            important = c.get("importance") == "high" or c.get("kind") in ("client_meeting", "presentation")
+            if cd in items and important:
+                before = _working_days_before(cd, 1)[0]
+                target = before if before in items else cd
+                items[target].append({
+                    "time": "11:00" if meet_tod == "morning" else "16:30",
+                    "title": f"🛟 Buffer: rehearse & finalise for {c['title']}",
+                    "why": f"Added because last time: “{failures[-1]['text']}”"})
+        notes.append(f"🛟 I added buffer time before important events because last time "
+                     f"“{failures[-1]['text']}”.")
+
+    # 6) lessons from past outcomes
     for o in mem["outcomes"]:
         if o.get("success") is False:
             notes.append(f"📉 Last time: “{o['text']}”. Leave extra buffer for similar work.")
@@ -204,6 +221,55 @@ def rule_decide(question, mem, today):
               if load >= 4 else "You have room this week, so this looks feasible if it fits your preferences above.")
     return {"kind": "answer", "summary": "Here's what I remember that's relevant:\n" + "\n".join(lines) +
             f"\n\n**Suggestion:** {advice}", "days": [], "notes": [], "memories_used": used}
+
+
+# ------------------------------------------------------------------ revisit a decision
+def rule_revisit(question, mem, today):
+    """Explain a past decision: why, what it was for, which habits support it, how it went."""
+    if not mem["decisions"]:
+        return {"kind": "answer", "summary": "You haven't told me about any decisions yet. "
+                "Try: “I'll prepare the presentation on Monday because the client meeting is on Wednesday.”",
+                "days": [], "notes": [], "memories_used": []}
+    q = _words(question)
+    best = max(mem["decisions"], key=lambda d: (len(q & _words(d["text"] + " " + (d.get("relatedTo") or ""))),
+                                                d.get("createdAt") or ""))
+    used = [f"Decision: {best['text']}"]
+    lines = [f"**Decision:** “{best['text']}”"]
+    if best.get("createdAt"):
+        lines.append(f"**Made on:** {best['createdAt'][:10]}")
+    lines.append(f"**Your reason:** {best.get('reason') or 'you did not give a reason'}")
+
+    dd, rd = _d(best.get("date")), _d(best.get("relatedDate"))
+    if best.get("relatedTo"):
+        lines.append(f"**Linked to:** {best['relatedTo']}" + (f" on {rd:%A %d %b}" if rd else "") +
+                     "  \n`Decision ─FOR→ " + best["relatedTo"] + "` in the memory graph")
+        used.append(f"Commitment: {best['relatedTo']}")
+
+    prep = _pref(mem, "preparation")
+    if prep and prep.get("prepDays") and dd and rd:
+        gap = len([1 for i in range((rd - dd).days) if (dd + timedelta(days=i)).weekday() < 5])
+        fits = gap >= prep["prepDays"]
+        lines.append(f"**Fits your habits?** {'✔️ Yes' if fits else '⚠️ Not quite'}: you gave yourself "
+                     f"{gap} working day(s), and you usually need {prep['prepDays']} "
+                     f"(“{prep['text']}”).")
+        used.append(f"Preference: {prep['text']}")
+
+    if best.get("outcome"):
+        ok = best.get("outcomeSuccess")
+        lines.append(f"**Outcome:** {'📈' if ok else '📉' if ok is False else '➖'} “{best['outcome']}”")
+        used.append(f"Outcome: {best['outcome']}")
+        if ok is False:
+            advice = ("Next time, start preparing one day earlier and block a rehearsal slot the day before. "
+                      "I'll add that buffer automatically when I plan your week.")
+        elif ok:
+            advice = "This approach worked, so I'll suggest the same timing for similar events."
+        else:
+            advice = "Mixed result. Tell me what you'd change and I'll remember it."
+    else:
+        advice = ("No outcome recorded yet. After it happens, tell me how it went "
+                  "(e.g. “The client presentation went well”) and I'll learn from it.")
+    lines.append(f"\n**💡 Looking back:** {advice}")
+    return {"kind": "answer", "summary": "\n\n".join(lines), "days": [], "notes": [], "memories_used": used}
 
 
 # ------------------------------------------------------------------ recall

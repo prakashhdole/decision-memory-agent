@@ -21,6 +21,17 @@ Without a key, the built-in rule engine handles everything.
 | 4. Memory retrieval | Graph query pulls active preferences, this week's commitments, open tasks, decisions and their outcomes | `graph.retrieve` |
 | 5. Recommendation | Week plan with a "why" for every item, conflict warnings and memories used | `memory_agent/planner.py` |
 
+## Advanced features
+- **Revisit decisions**: "Why did I decide to prepare on Monday?" returns the reason, the linked event,
+  whether it fits your habits, the outcome and a lesson.
+- **Learns from failure**: after "The presentation went badly, I ran out of time", future plans add a
+  🛟 rehearsal buffer before important events.
+- **Task completion**: "I sent the invoice to Acme" marks the matching task done.
+- **Calendar export**: download any week plan as `.ics` (Google Calendar / Outlook / Apple).
+- **Decision track record**: memory count, decisions, % that worked out, tasks done.
+- **Secure**: login with PBKDF2-hashed passwords, lockout after 5 failed tries, private memory per user,
+  secrets kept out of git.
+
 ## Graph model
 ```
 (:User)-[:HAS_PREFERENCE]->(:Preference {category, timeOfDay, prepDays, active})
